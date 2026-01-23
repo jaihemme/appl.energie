@@ -18,14 +18,14 @@ Ce projet implémente un système de traitement des données MQTT provenant d'un
 
 ## Structure des Fichiers CSV
 
-Le timestamp `<aaaammjj>_<hhmm>` correspond au lancement du script.
+Le timestamp `<aaaammjj>` correspond au lancement du script.
 
-### `ts_summary_<aaaammjj>_<hhmm>.csv`
+### `ts_summary_<aaaammjj>.csv`
 ```
 Time,TS,NS,Pi,Po,B1,B2,E1,E2,P1i,P2i,P3i,P1o,P2o,P3o,I1,I2,I3,U1,U2,U3
 ```
 
-### `energie_<aaaammjj>_<hhmm>.csv`
+### `energie_<aaaammjj>.csv`
 ```
 Time,Pi,Po,B1,B2,E1,E2,P1i,P2i,P3i,P1o,P2o,P3o,I1,I2,I3,U1,U2,U3,count
 ```
@@ -49,8 +49,11 @@ pip install paho-mqtt
 nohup python mqttToCsv.py &
 ```
 
+### Arrêt du programme
+Le programme s'arrête automatiquement au changement de jour. L'idée est de le relancer en boucle ce qui va créer à chaque fois deux nouveaux fichiers.
+
 ### Arrêter le programme
-Appuyez sur `Ctrl+C` pour arrêter proprement ou 'killall mqttToCsv.py' si le script a été lané avec nohup.
+Appuyez sur `Ctrl+C` pour arrêter proprement ou 'killall mqttToCsv.py' si le script a été lancé avec nohup.
 Les données agrégées restantes seront écrites avant l'arrêt.
 
 ## Configuration
