@@ -8,6 +8,7 @@ import logging
 import time
 import sys
 import argparse
+import signal
 
 
 # Configuration MQTT
@@ -185,6 +186,13 @@ def parse_arguments():
     return parser.parse_args()
 
 
+def signal_handler(sig, frame):
+    """Gestionnaire de signaux pour une terminaison propre"""
+    global stop_program
+    print(f"\nSignal {sig} reçu, arrêt en cours...")
+    stop_program = True
+
+
 def main():
     # Parser les arguments de la ligne de commande
     args = parse_arguments()
@@ -208,6 +216,10 @@ def main():
     # Se connecter au broker
     client.connect(MQTT_BROKER, MQTT_PORT, MQTT_TIMEOUT)
 
+    # Configurer les gestionnaires de signaux
+    signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # kill command
+
     # Démarrer la boucle MQTT
     try:
         client.loop_start()
@@ -220,7 +232,7 @@ def main():
         while not stop_program:
             time.sleep(1)
 
-        # Arrêt programmé (fin de journée)
+        # Arrêt programmé (fin de journée ou signal reçu)
         print("Arrêt programmé du client MQTT...")
         # Écrire les données agrégées restantes avant de quitter
         if aggregation:

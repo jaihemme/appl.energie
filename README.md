@@ -57,8 +57,32 @@ nohup python mqttToCsv.py -v &
 Le programme s'arrête automatiquement au changement de jour. L'idée est de le relancer en boucle ce qui va créer à chaque fois deux nouveaux fichiers.
 
 ### Arrêter le programme
-Appuyez sur `Ctrl+C` pour arrêter proprement ou 'killall mqttToCsv.py' si le script a été lancé avec nohup.
-Les données agrégées restantes seront écrites avant l'arrêt.
+
+Le programme supporte maintenant plusieurs méthodes d'arrêt propre :
+
+1. **Ctrl+C** (SIGINT) - Arrêt interactif
+2. **kill <PID>** (SIGTERM) - Arrêt via le PID
+3. **killall mqttToCsv.py** (SIGTERM) - Arrêt par nom de processus
+4. **Changement de jour** - Arrêt automatique à minuit
+
+Dans tous les cas, le programme :
+- Intercepte le signal
+- Affiche un message de confirmation
+- Écrit les données agrégées restantes
+- Arrête proprement la connexion MQTT
+- Se termine avec un code de sortie propre
+
+Exemple d'arrêt avec kill :
+```bash
+# Trouver le PID
+ps aux | grep mqttToCsv.py
+
+# Envoyer le signal SIGTERM
+kill <PID>
+
+# Ou utiliser killall
+killall mqttToCsv.py
+```
 
 ## Configuration
 
