@@ -7,6 +7,7 @@ import threading
 import logging
 import time
 import sys
+import argparse
 
 
 # Configuration MQTT
@@ -176,7 +177,20 @@ def periodic_write():
             break
 
 
+def parse_arguments():
+    """Parse les arguments de la ligne de commande"""
+    parser = argparse.ArgumentParser(description='MQTT to CSV Converter')
+    parser.add_argument('-v', '--verbose', action='store_true', 
+                       help='Active le mode verbose pour plus de sorties console')
+    return parser.parse_args()
+
+
 def main():
+    # Parser les arguments de la ligne de commande
+    args = parse_arguments()
+    global VERBOSE
+    VERBOSE = args.verbose
+    
     # Initialiser le client MQTT avec la nouvelle API
     logging.basicConfig(level=logging.INFO)
     if VERBOSE: logging.basicConfig(level=logging.DEBUG)

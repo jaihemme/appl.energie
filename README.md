@@ -46,7 +46,11 @@ pip install paho-mqtt
 
 ### Lancer le traitement MQTT
 ```bash
+# Mode normal
 nohup python mqttToCsv.py &
+
+# Mode verbose (pour le debug)
+nohup python mqttToCsv.py -v &
 ```
 
 ### Arrêt du programme
@@ -74,9 +78,22 @@ AGGREGATION_CSV_FILE = "energie.csv"
 ```
 
 # Debug
-VERBOSE = False
 
-Pour avoir plus d'infos, mettez ce flag à True
+Le programme supporte maintenant un mode verbose qui peut être activé via la ligne de commande :
+
+```bash
+python mqttToCsv.py -v
+# ou
+python mqttToCsv.py --verbose
+```
+
+Vous pouvez aussi obtenir de l'aide sur les options disponibles :
+
+```bash
+python mqttToCsv.py --help
+```
+
+Cela affichera toutes les options disponibles avec leur description.
 
 ## Exemples de Données
 
