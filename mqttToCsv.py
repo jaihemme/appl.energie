@@ -6,6 +6,7 @@ from collections import defaultdict
 import threading
 import logging
 import time
+import sys
 
 
 # Configuration MQTT
@@ -26,6 +27,9 @@ VERBOSE = False
 
 # Structure pour agréger les données par seconde
 aggregation = defaultdict(list)
+
+# Flag pour signaler l'arrêt du programme
+stop_program = False
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
@@ -156,6 +160,7 @@ def write_aggregation_to_csv():
 
 def periodic_write():
     """Fonction qui écrit périodiquement les données agrégées."""
+    global stop_program
     if VERBOSE: print('periodic_write()')
     while True:
         time.sleep(60)  # Écrire toutes les minutes
@@ -163,9 +168,12 @@ def periodic_write():
             if VERBOSE: print("Écriture périodique des données agrégées par seconde...")
             write_aggregation_to_csv()
         
-        if DATE != datetime.now().strftime('%Y%m%d'):
+        # Vérifier si la date a changé
+        current_date = datetime.now().strftime('%Y%m%d')
+        if current_date != DATE:
             print("Fin de journée, arrêt de script")
-            exit(0)
+            stop_program = True
+            break
 
 
 def main():
@@ -195,8 +203,17 @@ def main():
         write_thread.start()
 
         # Laisser tourner indéfiniment
-        while True:
+        while not stop_program:
             time.sleep(1)
+
+        # Arrêt programmé (fin de journée)
+        print("Arrêt programmé du client MQTT...")
+        # Écrire les données agrégées restantes avant de quitter
+        if aggregation:
+            write_aggregation_to_csv()
+        client.loop_stop()
+        client.disconnect()
+        sys.exit(0)
 
     except KeyboardInterrupt:
         print("Arrêt du client MQTT...")
