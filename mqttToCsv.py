@@ -22,8 +22,9 @@ MQTT_TIMEOUT = 10
 
 # Fichiers de sortie
 DATE = datetime.now().strftime('%Y%m%d')
-TS_CSV_FILE = f"ts_summary_{DATE}.csv"  # Pour les résumés TS toutes les 5 minutes
-AGGREGATE_CSV_FILE = f"energie_{DATE}.csv"  # Pour les données agrégées par seconde
+DATA_DIR = "/home/pi/data"
+TS_CSV_FILE = f"{DATA_DIR}/ts_summary_{DATE}.csv"  # Pour les résumés TS toutes les 5 minutes
+AGGREGATE_CSV_FILE = f"{DATA_DIR}/energie_{DATE}.csv"  # Pour les données agrégées par seconde
 # flag pour plus de sorties à la console
 VERBOSE = False
 

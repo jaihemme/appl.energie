@@ -51,6 +51,10 @@ nohup python mqttToCsv.py &
 
 # Mode verbose (pour le debug)
 nohup python mqttToCsv.py -v &
+
+# Mode production
+# Le script est relancé tous les jours pour créer de nouveaux fichiers de sortie
+nohup mqttToCsv.sh > mqttToCsv.out 2>&1 &§
 ```
 
 ### Arrêt du programme
@@ -97,8 +101,9 @@ MQTT_USER = "DVES_USER"
 MQTT_PASSWORD = ""
 
 # Fichiers de sortie
-TS_CSV_FILE = "ts_summary.csv"
-AGGREGATION_CSV_FILE = "energie.csv"
+DATA_DIR = "/home/pi/data"
+TS_CSV_FILE = f"{DATA_DIR}/ts_summary_{DATE}.csv"  # Pour les résumés TS toutes les 5 minutes
+AGGREGATE_CSV_FILE = f"{DATA_DIR}/energie_{DATE}.csv"  # Pour les données agrégées par seconde
 ```
 
 # Debug

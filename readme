@@ -11,7 +11,8 @@ cd /home/yogi/appl.energie
 penv
 vibe
 
-requête initilale:
+requête initiale:
 Le but final est d’avoir des graphiques de la puissance instantanée et de l’énergie consommée . Plus tard s’y joindra encore les données de production photovoltaïque.  la première étape est d’explorer les metrics sur le broker et de choisir celles qu’on va garder.
 
-
+installation sur pi0:
+voir /home/pi/install.sh

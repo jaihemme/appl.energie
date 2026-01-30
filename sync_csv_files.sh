@@ -11,7 +11,7 @@ export TZ=Europe/Zurich
 # Configuration
 # Utiliser l'adresse IP directement pour éviter les problèmes de résolution DNS
 SOURCE_HOST="pi@192.168.0.200"
-SOURCE_DIR="scripts/data/"
+SOURCE_DIR="data/"
 SOURCE_PATH="${SOURCE_HOST}:${SOURCE_DIR}"
 DEST_DIR="/home/yogi/appl.energie/data/"
 LOG_FILE="/home/yogi/appl.energie/sync_log.txt"
