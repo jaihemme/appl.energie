@@ -54,7 +54,7 @@ nohup python mqttToCsv.py -v &
 
 # Mode production
 # Le script est relancé tous les jours pour créer de nouveaux fichiers de sortie
-nohup mqttToCsv.sh > mqttToCsv.out 2>&1 &§
+nohup mqttToCsv.sh > mqttToCsv.out 2>&1 &
 ```
 
 ### Arrêt du programme
