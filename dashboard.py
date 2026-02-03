@@ -51,6 +51,74 @@ def load_day_data(date):
         print(f"Erreur lors de la lecture du fichier {filename}: {e}")
         return None
 
+def load_solaredge_data(date):
+    """Charge les données SolarEdge pour une date donnée"""
+    date_str = date.strftime("%Y%m%d")
+    filename = os.path.join(DATA_DIR, f"solaredge_power_{date_str}.csv")
+    
+    # Essayer aussi le format de fichier alternatif
+    if not os.path.exists(filename):
+        filename = os.path.join(DATA_DIR, f"solaredge_daily_{date_str}.csv")
+    
+    if not os.path.exists(filename):
+        # Essayer de trouver un fichier qui contient cette date
+        pattern = os.path.join(DATA_DIR, f"solaredge_power_*{date_str}*")
+        files = glob.glob(pattern)
+        if files:
+            filename = files[0]
+        else:
+            return None
+    
+    try:
+        df = pd.read_csv(filename)
+        
+        # Vérifier si le fichier contient les bonnes colonnes
+        if 'Time' in df.columns:
+            df['Time'] = pd.to_datetime(df['Time'])
+        elif 'Date' in df.columns:
+            df['Time'] = pd.to_datetime(df['Date'])
+            # Si c'est un fichier quotidien, créer des intervalles de 15 minutes
+            if len(df) == 1:
+                # Créer un DataFrame avec des intervalles de 15 minutes
+                full_day = pd.date_range(
+                    start=df['Time'].iloc[0].replace(hour=0, minute=0, second=0),
+                    end=df['Time'].iloc[0].replace(hour=23, minute=45, second=0),
+                    freq='15min'
+                )
+                df_full = pd.DataFrame({'Time': full_day})
+                
+                # Remplir avec la production moyenne (approximation)
+                total_production = df['Production_kWh'].iloc[0] if 'Production_kWh' in df.columns else 0
+                avg_power = total_production / 24  # Approximation
+                df_full['Production_kW'] = avg_power
+                df_full['Production_W'] = avg_power * 1000
+                return df_full
+        
+        return df
+    except Exception as e:
+        print(f"Erreur lors de la lecture du fichier SolarEdge {filename}: {e}")
+        return None
+
+def merge_data_with_solaredge(main_df, solaredge_df):
+    """Fusionne les données principales avec les données SolarEdge"""
+    if solaredge_df is None or solaredge_df.empty:
+        return main_df
+    
+    # Assurer que les deux DataFrames ont des colonnes Time compatibles
+    if 'Time' not in solaredge_df.columns:
+        return main_df
+    
+    # Fusionner les données sur la colonne Time (la plus proche)
+    merged_df = pd.merge_asof(
+        main_df.sort_values('Time'),
+        solaredge_df.sort_values('Time'),
+        on='Time',
+        direction='nearest',
+        tolerance=pd.Timedelta('15min')
+    )
+    
+    return merged_df
+
 def format_french_date(date):
     """Formate une date en français"""
     jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
@@ -64,37 +132,96 @@ def format_french_date(date):
     
     return f"{jour_semaine} {jour} {mois_nom} {annee}"
 
-def create_plot(df, date):
-    """Crée un graphique Plotly avec les données Pi et Po sur le même graphique"""
+def create_plot(df, date, has_solaredge=False):
+    """Crée un graphique Plotly avec les flux énergétiques détaillés"""
     if df is None or df.empty:
         return None
     
     # Créer un graphique simple
     fig = go.Figure()
     
-    # Ajouter la ligne Pi (positive)
-    fig.add_trace(go.Scatter(
-        x=df['Time'],
-        y=df['Pi'],
-        name='Pi (kW)',
-        line=dict(color='royalblue', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(65, 105, 225, 0.3)',
-        hovertemplate='<b>Pi</b>: %{y:.3f} kW<br><extra></extra>'
-    ))
+    # Si des données SolarEdge sont disponibles, afficher les flux énergétiques détaillés
+    if has_solaredge and 'Production_kW' in df.columns and 'Po' in df.columns:
+        # Calculer les différents flux
+        df['PV_to_grid'] = df['Po']  # Vers le réseau
+        df['PV_to_home'] = df['Production_kW'] - df['Po']  # Vers la maison
+        df['Grid_to_home'] = df['Pi']  # Depuis le réseau
+        
+        # Partie POSITIVE (Production)
+        # 1. Production PV totale
+        fig.add_trace(go.Bar(
+            x=df['Time'],
+            y=df['Production_kW'],
+            name='Production PV Totale',
+            marker_color='gold',
+            hovertemplate='<b>Production PV</b>: %{y:.3f} kW<br><extra></extra>',
+            opacity=0.7
+        ))
+        
+        # 2. Vers le réseau (Po)
+        fig.add_trace(go.Bar(
+            x=df['Time'],
+            y=df['PV_to_grid'],
+            name='PV → Réseau',
+            marker_color='lightgreen',
+            hovertemplate='<b>PV → Réseau</b>: %{y:.3f} kW<br><extra></extra>',
+            opacity=0.9
+        ))
+        
+        # 3. Vers la maison
+        fig.add_trace(go.Bar(
+            x=df['Time'],
+            y=df['PV_to_home'],
+            name='PV → Maison',
+            marker_color='orange',
+            hovertemplate='<b>PV → Maison</b>: %{y:.3f} kW<br><extra></extra>',
+            opacity=0.9
+        ))
+        
+        # Partie NÉGATIVE (Consommation)
+        # 4. Depuis le réseau (Pi)
+        fig.add_trace(go.Bar(
+            x=df['Time'],
+            y=[-x for x in df['Grid_to_home']],
+            name='Réseau → Maison',
+            marker_color='royalblue',
+            hovertemplate='<b>Réseau → Maison</b>: %{y:.3f} kW<br><extra></extra>',
+            opacity=0.9
+        ))
+        
+        # 5. Depuis le PV (autoconsommation)
+        fig.add_trace(go.Bar(
+            x=df['Time'],
+            y=[-x for x in df['PV_to_home']],
+            name='PV → Maison (auto)',
+            marker_color='orange',
+            hovertemplate='<b>PV → Maison</b>: %{y:.3f} kW<br><extra></extra>',
+            opacity=0.5,
+            showlegend=False  # Ne pas montrer deux fois dans la légende
+        ))
+        
+    else:
+        # Mode classique sans données solaires
+        # Ajouter les barres Pi en négatif (consommation)
+        fig.add_trace(go.Bar(
+            x=df['Time'],
+            y=[-x for x in df['Pi']],  # Pi en négatif pour représenter la consommation
+            name='Consommation (kW)',
+            marker_color='royalblue',
+            hovertemplate='<b>Consommation</b>: %{y:.3f} kW<br><extra></extra>'
+        ))
+        
+        # Ajouter les barres Po (négatives) - injection si applicable
+        if 'Po' in df.columns:
+            fig.add_trace(go.Bar(
+                x=df['Time'],
+                y=[-x for x in df['Po']],  # Po en négatif
+                name='Injection (kW)',
+                marker_color='lightgreen',
+                hovertemplate='<b>Injection</b>: %{y:.3f} kW<br><extra></extra>'
+            ))
     
-    # Ajouter la ligne Po (négative)
-    fig.add_trace(go.Scatter(
-        x=df['Time'],
-        y=[-x for x in df['Po']],  # Po en négatif
-        name='Po (kW)',
-        line=dict(color='firebrick', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(178, 34, 34, 0.3)',
-        hovertemplate='<b>Po</b>: %{y:.3f} kW<br><extra></extra>'
-    ))
-    
-    # Ajouter une ligne à zéro pour séparer Pi et Po
+    # Ajouter une ligne à zéro pour séparer production et consommation
     fig.add_hline(y=0, line_dash="dash", line_color="gray", annotation_text="Zéro")
     
     # Mise en forme des axes
@@ -128,22 +255,48 @@ def create_plot(df, date):
             y=1.02,
             xanchor="right",
             x=1
-        )
+        ),
+        barmode='group'  # Mode de regroupement des barres
     )
     
     # Ajouter des annotations avec les statistiques
-    pi_mean = df['Pi'].mean()
-    po_mean = df['Po'].mean()
-    pi_max = df['Pi'].max()
-    po_max = df['Po'].max()
-    net_energy = pi_mean - po_mean
+    e1_last = df['E1'].iloc[-1] if 'E1' in df.columns else 0
+    e2_last = df['E2'].iloc[-1] if 'E2' in df.columns else 0
+    e_total = e1_last + e2_last
+    
+    # Statistiques de production solaire si disponible
+    if has_solaredge and 'Production_kW' in df.columns and 'Po' in df.columns:
+        solar_production = df['Production_kW'].sum()
+        solar_max = df['Production_kW'].max()
+        
+        # Calculer les flux énergétiques
+        pv_to_grid = df['Po'].sum()  # Énergie injectée dans le réseau
+        pv_to_home = (df['Production_kW'] - df['Po']).sum()  # Autoconsommation
+        grid_to_home = df['Pi'].sum()  # Consommation depuis le réseau
+        
+        # Taux d'autoconsommation
+        autoconsumption_rate = (pv_to_home / solar_production * 100) if solar_production > 0 else 0
+        
+        stats_text = (
+            f"<b>🔋 Bilan Énergétique Complet</b><br>"
+            f"🌞 Production PV: {solar_production:.2f} kWh (Max: {solar_max:.3f} kW)<br>"
+            f"⚡ Consommation Totale: {grid_to_home + pv_to_home:.2f} kWh<br>"
+            f"📊 Équilibre: {solar_production - (grid_to_home + pv_to_home):.2f} kWh<br><br>"
+            f"<b>🔄 Flux Énergétiques</b><br>"
+            f"🟢 PV → Réseau: {pv_to_grid:.2f} kWh ({pv_to_grid/solar_production*100:.1f}%)<br>"
+            f"🟠 PV → Maison: {pv_to_home:.2f} kWh ({autoconsumption_rate:.1f}%)<br>"
+            f"🟦 Réseau → Maison: {grid_to_home:.2f} kWh<br>"
+            f"🏡 Taux autoconsommation: {autoconsumption_rate:.1f}%"
+        )
+    else:
+        stats_text = f"<b>Énergie Consommée</b><br>Haut tarif (E1): {e1_last:.2f} kWh<br>Bas tarif (E2): {e2_last:.2f} kWh<br>Total: {e_total:.2f} kWh"
     
     fig.add_annotation(
         x=0.5,
         y=1.05,
         xref="paper",
         yref="paper",
-        text=f"<b>Statistiques</b><br>Pi: Moyenne={pi_mean:.2f} kW, Max={pi_max:.2f} kW<br>Po: Moyenne={po_mean:.2f} kW, Max={po_max:.2f} kW<br>Bilan: {net_energy:.2f} kW",
+        text=stats_text,
         showarrow=False,
         align="center",
         bordercolor="#c9c9c9",
@@ -276,15 +429,60 @@ HTML_TEMPLATE = '''
         </div>
         
         <div class="stats">
-            <h3>📈 Statistiques du {{ date_str }}</h3>
+            {% if has_solaredge %}
+            <h3>🔋 Bilan Énergétique - {{ date_str }}</h3>
             <div class="stats-content">
                 <div class="stat-item">
-                    <div class="stat-value">{{ pi_mean }}</div>
-                    <div class="stat-label">Pi Moyenne (kW)</div>
+                    <div class="stat-value">{{ solar_production }}</div>
+                    <div class="stat-label">🌞 Production PV (kWh)</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">{{ po_mean }}</div>
-                    <div class="stat-label">Po Moyenne (kW)</div>
+                    <div class="stat-value">{{ "%.3f"|format((grid_to_home|float + pv_to_home|float)) }}</div>
+                    <div class="stat-label">⚡ Consommation Totale (kWh)</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ "%.3f"|format((solar_production|float - (grid_to_home|float + pv_to_home|float))) }}</div>
+                    <div class="stat-label">📊 Équilibre (kWh)</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ "%.1f"|format(autoconsumption_rate|float) }}</div>
+                    <div class="stat-label">🏡 Taux Autoconsommation (%)</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ solar_max }}</div>
+                    <div class="stat-label">🌞 Production Max (kW)</div>
+                </div>
+            </div>
+            
+            <h3 style="margin-top: 15px;">🔄 Flux Énergétiques</h3>
+            <div class="stats-content">
+                <div class="stat-item">
+                    <div class="stat-value">{{ pv_to_grid }}</div>
+                    <div class="stat-label">🟢 PV → Réseau (kWh)</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ pv_to_home }}</div>
+                    <div class="stat-label">🟠 PV → Maison (kWh)</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ grid_to_home }}</div>
+                    <div class="stat-label">🟦 Réseau → Maison (kWh)</div>
+                </div>
+            </div>
+            {% else %}
+            <h3>📊 Énergie Consommée - {{ date_str }}</h3>
+            <div class="stats-content">
+                <div class="stat-item">
+                    <div class="stat-value">{{ e1_last }}</div>
+                    <div class="stat-label">Haut tarif (E1) kWh</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ e2_last }}</div>
+                    <div class="stat-label">Bas tarif (E2) kWh</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ e_total }}</div>
+                    <div class="stat-label">Total kWh</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value">{{ pi_max }}</div>
@@ -294,15 +492,8 @@ HTML_TEMPLATE = '''
                     <div class="stat-value">{{ po_max }}</div>
                     <div class="stat-label">Po Maximum (kW)</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-value">{{ net_energy }}</div>
-                    <div class="stat-label">Bilan Net (kW)</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value">{{ record_count }}</div>
-                    <div class="stat-label">Enregistrements</div>
-                </div>
             </div>
+            {% endif %}
         </div>
         
         <div id="plot">{{ plot_html|safe }}</div>
@@ -411,17 +602,48 @@ def show_date(current_date, available_dates):
     if df is None or df.empty:
         return f"Aucune donnée disponible pour le {current_date.strftime('%d/%m/%Y')}"
     
+    # Charger les données SolarEdge
+    solaredge_df = load_solaredge_data(current_date)
+    
+    # Fusionner les données si des données SolarEdge sont disponibles
+    if solaredge_df is not None and not solaredge_df.empty:
+        df = merge_data_with_solaredge(df, solaredge_df)
+        has_solaredge = True
+    else:
+        has_solaredge = False
+    
     # Créer le graphique
-    fig = create_plot(df, current_date)
+    fig = create_plot(df, current_date, has_solaredge)
     plot_html = fig.to_html(full_html=False)
     
     # Calculer les statistiques
-    pi_mean = df['Pi'].mean()
-    po_mean = df['Po'].mean()
     pi_max = df['Pi'].max()
     po_max = df['Po'].max()
-    record_count = len(df)
-    net_energy = pi_mean - po_mean
+    
+    # Calculer l'énergie consommée (dernières valeurs de E1 et E2)
+    e1_last = df['E1'].iloc[-1] if 'E1' in df.columns else 0
+    e2_last = df['E2'].iloc[-1] if 'E2' in df.columns else 0
+    e_total = e1_last + e2_last
+    
+    # Calculer la production solaire et les flux énergétiques si disponible
+    if has_solaredge and 'Production_kW' in df.columns and 'Po' in df.columns:
+        solar_production = df['Production_kW'].sum()  # Total en kWh
+        solar_max = df['Production_kW'].max()
+        
+        # Calculer les flux énergétiques
+        pv_to_grid = df['Po'].sum()  # Énergie injectée dans le réseau
+        pv_to_home = (df['Production_kW'] - df['Po']).sum()  # Autoconsommation
+        grid_to_home = df['Pi'].sum()  # Consommation depuis le réseau
+        
+        # Taux d'autoconsommation
+        autoconsumption_rate = (pv_to_home / solar_production * 100) if solar_production > 0 else 0
+    else:
+        solar_production = 0
+        solar_max = 0
+        pv_to_grid = 0
+        pv_to_home = 0
+        grid_to_home = 0
+        autoconsumption_rate = 0
     
     # Déterminer si les boutons précédent/suivant doivent être activés
     current_index = available_dates.index(current_date)
@@ -433,12 +655,18 @@ def show_date(current_date, available_dates):
         date_str=format_french_date(current_date),
         current_date_str=current_date.strftime('%Y-%m-%d'),
         plot_html=plot_html,
-        pi_mean=f"{pi_mean:.3f}",
-        po_mean=f"{po_mean:.3f}",
+        e1_last=f"{e1_last:.3f}",
+        e2_last=f"{e2_last:.3f}",
+        e_total=f"{e_total:.3f}",
+        solar_production=f"{solar_production:.3f}",
+        solar_max=f"{solar_max:.3f}",
+        pv_to_grid=f"{pv_to_grid:.3f}",
+        pv_to_home=f"{pv_to_home:.3f}",
+        grid_to_home=f"{grid_to_home:.3f}",
+        autoconsumption_rate=f"{autoconsumption_rate:.1f}",
         pi_max=f"{pi_max:.3f}",
         po_max=f"{po_max:.3f}",
-        net_energy=f"{net_energy:.3f}",
-        record_count=record_count,
+        has_solaredge=has_solaredge,
         filename=f"ts_summary_{current_date.strftime('%Y%m%d')}.csv",
         has_prev=has_prev,
         has_next=has_next
